@@ -170,7 +170,7 @@ class MainSlideGeneratorSkill:
         Add styled content slide with dynamic layout engine.
 
         This function analyzes the slide content and selects the appropriate layout:
-        - If chart data exists: Use chart_plus_insight_60_40 layout
+        - If chart data exists: Use chart_plus_insight_50_50 layout
         - Otherwise: Use bullets-only layout
         """
         slide = prs.slides.add_slide(prs.slide_layouts[6])  # Blank layout
@@ -289,7 +289,7 @@ class MainSlideGeneratorSkill:
             slide_content: Slide content with chart data and bullets
         """
         # Get layout specification (PRINCIPLE 2: Split-Screen 60/40)
-        layout = self.config['layout_distribution']['chart_plus_insight_60_40']
+        layout = self.config['layout_distribution']['chart_plus_insight_50_50']
         chart_area = layout['chart_area']
         text_area = layout['text_area']
         gutter_px = layout['gutter_px']  # IMPROVEMENT 1: Explicit gutter (60px at 144 DPI = 40px at 96 DPI)
@@ -1063,27 +1063,27 @@ class MainSlideGeneratorSkill:
         dynamic_typography = self._get_dynamic_chart_typography(categories, 1)
 
         # GLOBAL SKILL 1: Apply Story-Driven Color Engine to waterfall
-        # Get story-driven colors from config
-        story_colors = self.config.get('story_driven_colors', {})
-        highlight_rgb = story_colors.get('highlight_rgb', (20, 123, 88))  # Primary Green
-        default_grey_rgb = story_colors.get('default_neutral_rgb', (211, 211, 211))  # Light Grey
+        # Waterfall uses distinct colors: Primary Green for baseline, Accent Blue for increases, Red for decreases
+        primary_green_rgb = (20, 123, 88)   # Start/End - baseline values
+        accent_blue_rgb = (0, 94, 184)       # Increase - positive drivers
+        negative_red_rgb = (230, 81, 102)    # Decrease - negative drivers
 
         series = chart.series[0]
         for idx, point in enumerate(series.points):
             point_type = types[idx] if idx < len(types) else 'increase'
 
             if point_type in ['start', 'end']:
-                # Start/End: Use highlight color (Accent Blue) - these are key totals
+                # Start/End: Primary Green - these are baseline totals
                 point.format.fill.solid()
-                point.format.fill.fore_color.rgb = RGBColor(*highlight_rgb)
+                point.format.fill.fore_color.rgb = RGBColor(*primary_green_rgb)
             elif point_type == 'increase':
-                # Increase: Use highlight color (Accent Blue)
+                # Increase: Accent Blue - clearly distinguishes positive drivers from baseline
                 point.format.fill.solid()
-                point.format.fill.fore_color.rgb = RGBColor(*highlight_rgb)
+                point.format.fill.fore_color.rgb = RGBColor(*accent_blue_rgb)
             else:  # decrease
-                # Decrease: Use Negative Red (exception to color rules for clarity)
+                # Decrease: Negative Red - shows negative impact
                 point.format.fill.solid()
-                point.format.fill.fore_color.rgb = RGBColor(230, 81, 102)
+                point.format.fill.fore_color.rgb = RGBColor(*negative_red_rgb)
 
             # FINAL PROFESSIONAL STANDARD 3: Borderless
             point.format.line.fill.background()
@@ -1224,109 +1224,211 @@ class MainSlideGeneratorSkill:
         """
         GLOBAL SKILL 3: Add CAGR arrow showing growth from start to end point.
 
-        Visual Annotation System: Thin, grey arrow connecting bar tops with text above arc.
-        For growth multiples (e.g., '2.5x Growth', '25% CAGR').
+        FULLY DYNAMIC AND DATA-DRIVEN IMPLEMENTATION:
+        1. Get Anchor Coordinates: Programmatically determine exact (X, Y) of bar tops
+        2. Draw Curved Line: Quadratic Bézier curve with vertical lift offset
+        3. Calculate Apex: Determine highest point of the curve
+        4. Position Label: Place text precisely above the apex, horizontally centered
+
+        All positions are derived procedurally from chart data. No hardcoded coordinates.
 
         Args:
             slide: PowerPoint slide object
             chart_shape: Chart shape
             annotation: Dict with 'series_index', 'from_category', 'to_category', 'label'
-                      OR legacy 'from_x', 'from_y', 'to_x', 'to_y' (deprecated)
             chart_area: Chart area bounds (Inches objects)
         """
+        from pptx.util import Emu
+        from pptx.oxml.ns import nsmap
+        from pptx.oxml import parse_xml
+        from lxml import etree
+
         chart = chart_shape.chart
 
-        # GLOBAL FIX: Extract chart bounds as float inches values
-        # Handle both Inches objects and raw EMU integers
+        # Helper to convert to inches float
         def to_inches_float(val):
             if hasattr(val, 'inches'):
                 return val.inches
             elif hasattr(val, 'pt'):
                 return val.inches
             else:
-                # Assume EMU, convert to inches
                 return val / 914400
 
+        # =========================================================================
+        # STEP 1: GET ANCHOR COORDINATES FROM CHART DATA
+        # =========================================================================
         chart_x1 = to_inches_float(chart_area['x1'])
         chart_y1 = to_inches_float(chart_area['y1'])
         chart_width = to_inches_float(chart_area['width'])
         chart_height = to_inches_float(chart_area['height'])
 
-        # GLOBAL FIX: Calculate arrow position based on actual bar data
-        if 'series_index' in annotation:
-            # NEW DATA-DRIVEN APPROACH: Use series and category indices
-            series_idx = annotation.get('series_index', 0)
-            from_cat_idx = annotation.get('from_category', 0)
-            to_cat_idx = annotation.get('to_category', -1)
+        # Get series and category indices
+        series_idx = annotation.get('series_index', 0)
+        from_cat_idx = annotation.get('from_category', 0)
+        to_cat_idx = annotation.get('to_category', -1)
 
-            # Get chart data
-            series = chart.series[series_idx]
-            num_categories = len(series.points)
-            if to_cat_idx < 0:
-                to_cat_idx = num_categories + to_cat_idx  # Support negative indexing
+        # Get chart data
+        series = chart.series[series_idx]
+        num_series = len(chart.series)
+        num_categories = len(series.points)
+        if to_cat_idx < 0:
+            to_cat_idx = num_categories + to_cat_idx
 
-            # Get data values from series.values (ChartData object)
-            series_values = list(series.values)
-            from_value = series_values[from_cat_idx]
-            to_value = series_values[to_cat_idx]
+        # Get data values
+        series_values = list(series.values)
+        from_value = series_values[from_cat_idx]
+        to_value = series_values[to_cat_idx]
 
-            # Get Y-axis range
-            value_axis = chart.value_axis
-            y_min = value_axis.minimum_scale if value_axis.minimum_scale is not None else 0
-            y_max = value_axis.maximum_scale if value_axis.maximum_scale is not None else max(series_values)
-            y_range = y_max - y_min
-            if y_range <= 0:
-                y_range = 1  # Prevent division by zero
+        # Get Y-axis range (auto-calculated or explicit)
+        value_axis = chart.value_axis
+        all_values = []
+        for s in chart.series:
+            all_values.extend(list(s.values))
+        data_min = min(all_values)
+        data_max = max(all_values)
 
-            # Calculate positions
-            # X position: evenly distribute categories across chart width
-            from_x_ratio = (from_cat_idx + 0.5) / num_categories  # Center of bar
-            to_x_ratio = (to_cat_idx + 0.5) / num_categories
+        y_min = value_axis.minimum_scale if value_axis.minimum_scale is not None else 0
+        y_max = value_axis.maximum_scale if value_axis.maximum_scale is not None else data_max * 1.1
+        y_range = y_max - y_min
+        if y_range <= 0:
+            y_range = 1
 
-            # Y position: proportional to data value (with small offset above bar)
-            offset_pct = 0.05  # 5% offset above bar top for visibility
-            from_y_ratio = ((from_value - y_min) / y_range) + offset_pct
-            to_y_ratio = ((to_value - y_min) / y_range) + offset_pct
+        # Calculate plot area within chart (accounting for axes, labels, legend)
+        # Estimate plot area margins (PowerPoint typically uses ~15% for axes/labels)
+        plot_left_margin = 0.12  # 12% for Y-axis labels
+        plot_right_margin = 0.02  # 2% right padding
+        plot_top_margin = 0.08  # 8% for title/padding
+        plot_bottom_margin = 0.15  # 15% for X-axis labels and legend
 
-            from_x_inches = chart_x1 + (from_x_ratio * chart_width)
-            from_y_inches = chart_y1 + ((1 - from_y_ratio) * chart_height)
-            to_x_inches = chart_x1 + (to_x_ratio * chart_width)
-            to_y_inches = chart_y1 + ((1 - to_y_ratio) * chart_height)
-        else:
-            # LEGACY MANUAL APPROACH (deprecated but still supported)
-            from_x_inches = chart_x1 + (annotation.get('from_x', 0.2) * chart_width)
-            from_y_inches = chart_y1 + ((1 - annotation.get('from_y', 0.3)) * chart_height)
-            to_x_inches = chart_x1 + (annotation.get('to_x', 0.8) * chart_width)
-            to_y_inches = chart_y1 + ((1 - annotation.get('to_y', 0.7)) * chart_height)
+        plot_x1 = chart_x1 + (plot_left_margin * chart_width)
+        plot_width = chart_width * (1 - plot_left_margin - plot_right_margin)
+        plot_y1 = chart_y1 + (plot_top_margin * chart_height)
+        plot_height = chart_height * (1 - plot_top_margin - plot_bottom_margin)
 
-        # Add arrow connector - THIN and GREY as specified
-        connector = slide.shapes.add_connector(
-            MSO_CONNECTOR.STRAIGHT,
-            Inches(from_x_inches), Inches(from_y_inches),
-            Inches(to_x_inches), Inches(to_y_inches)
+        # Calculate bar positions within plot area
+        # For clustered bar charts: bars are grouped by category
+        gap_width_ratio = 0.5  # 50% gap (matches chart config)
+        category_width = plot_width / num_categories
+        bar_group_width = category_width / (1 + gap_width_ratio)
+        single_bar_width = bar_group_width / num_series
+        gap_between_categories = category_width - bar_group_width
+
+        # Calculate X position: center of the specific bar within its category
+        def get_bar_center_x(cat_idx, ser_idx):
+            category_start = plot_x1 + (cat_idx * category_width) + (gap_between_categories / 2)
+            bar_start = category_start + (ser_idx * single_bar_width)
+            bar_center = bar_start + (single_bar_width / 2)
+            return bar_center
+
+        # Calculate Y position: top of bar based on data value
+        def get_bar_top_y(value):
+            value_ratio = (value - y_min) / y_range
+            # Y increases downward in PowerPoint, so invert
+            bar_top_y = plot_y1 + plot_height - (value_ratio * plot_height)
+            return bar_top_y
+
+        # Get anchor points (top-center of start and end bars)
+        from_x = get_bar_center_x(from_cat_idx, series_idx)
+        from_y = get_bar_top_y(from_value)
+        to_x = get_bar_center_x(to_cat_idx, series_idx)
+        to_y = get_bar_top_y(to_value)
+
+        # =========================================================================
+        # STEP 2: DRAW QUADRATIC BÉZIER CURVE (DATA-DRIVEN ARC HEIGHT)
+        # =========================================================================
+        # NEW LOGIC: Arc height is determined by the highest obstacle between start and end
+
+        # STEP 2a: Identify the highest obstacle between start and end categories
+        # Find the maximum value of any bar (across all series) between from_cat and to_cat
+        min_cat = min(from_cat_idx, to_cat_idx)
+        max_cat = max(from_cat_idx, to_cat_idx)
+
+        highest_obstacle_value = 0
+        for cat_idx in range(min_cat, max_cat + 1):
+            for s in chart.series:
+                s_values = list(s.values)
+                if cat_idx < len(s_values):
+                    highest_obstacle_value = max(highest_obstacle_value, s_values[cat_idx])
+
+        # STEP 2b: Calculate the arc's peak with clearance factor
+        # The peak should be just above the highest obstacle
+        clearance_px = 30  # 30 pixels clearance above highest bar
+        clearance_inches = clearance_px / 144  # Convert from 144 DPI reference
+
+        # Get the Y position of the highest obstacle
+        highest_obstacle_y = get_bar_top_y(highest_obstacle_value)
+
+        # The control point (and thus the arc peak) should be clearance_inches above the highest obstacle
+        # For a quadratic Bézier, the curve reaches approximately 75% of the way to the control point
+        # So we need to set control_y such that the actual peak clears by clearance_inches
+        # Adjustment factor: control point needs to be ~1.33x the desired peak offset
+        control_y = highest_obstacle_y - (clearance_inches * 1.33)
+
+        mid_x = (from_x + to_x) / 2
+
+        # Generate points along the Bézier curve for the freeform shape
+        # Quadratic Bézier: B(t) = (1-t)²P0 + 2(1-t)tP1 + t²P2
+        def bezier_point(t, p0, p1, p2):
+            return ((1 - t) ** 2) * p0 + 2 * (1 - t) * t * p1 + (t ** 2) * p2
+
+        num_segments = 20
+        curve_points = []
+        for i in range(num_segments + 1):
+            t = i / num_segments
+            bx = bezier_point(t, from_x, mid_x, to_x)
+            by = bezier_point(t, from_y, control_y, to_y)
+            curve_points.append((bx, by))
+
+        # Create freeform shape for the curved line
+        # Use a series of line segments to approximate the curve
+        builder = slide.shapes.build_freeform(
+            Inches(curve_points[0][0]),
+            Inches(curve_points[0][1])
         )
-        connector.line.color.rgb = RGBColor(169, 169, 169)  # Axis Grey - not bright blue
-        connector.line.width = Pt(1)  # Thin line (reduced from 2pt)
+        for px, py in curve_points[1:]:
+            builder.add_line_segments([(Inches(px), Inches(py))], close=False)
 
-        # Add label ABOVE the arc (not on top of arrow)
+        curve_shape = builder.convert_to_shape()
+        curve_shape.line.color.rgb = RGBColor(169, 169, 169)  # Axis Grey
+        curve_shape.line.width = Pt(1)  # Thin line
+        curve_shape.fill.background()  # No fill
+
+        # =========================================================================
+        # STEP 3: CALCULATE THE APEX OF THE CURVE
+        # =========================================================================
+        # For a quadratic Bézier, the apex (highest point) occurs at t where dy/dt = 0
+        # For our purposes, we can find it by checking the curve points
+        apex_y = min(p[1] for p in curve_points)
+        apex_idx = [p[1] for p in curve_points].index(apex_y)
+        apex_x = curve_points[apex_idx][0]
+
+        # =========================================================================
+        # STEP 4: POSITION THE LABEL ABOVE THE APEX
+        # =========================================================================
         label_text = annotation.get('label', 'CAGR')
-        label_x_inches = (from_x_inches + to_x_inches) / 2
-        # Place ABOVE the arrow arc
-        label_y_inches = min(from_y_inches, to_y_inches) - 0.25  # 0.25 inches above
+
+        # Position label above apex, horizontally centered
+        label_width = 0.9  # Inches
+        label_height = 0.25  # Inches
+        label_offset_above = 0.08  # Inches above apex
+
+        label_x = apex_x - (label_width / 2)  # Center horizontally on apex
+        label_y = apex_y - label_height - label_offset_above  # Above the apex
 
         label_box = slide.shapes.add_textbox(
-            Inches(label_x_inches - 0.4),  # Centered (0.8 inch wide box)
-            Inches(label_y_inches),
-            Inches(0.8),  # Wider box for text
-            Inches(0.2)
+            Inches(label_x),
+            Inches(label_y),
+            Inches(label_width),
+            Inches(label_height)
         )
         label_frame = label_box.text_frame
+        label_frame.word_wrap = False
         label_frame.text = label_text
         p = label_frame.paragraphs[0]
         p.alignment = PP_PARAGRAPH_ALIGNMENT.CENTER
-        p.font.size = Pt(10)  # Smaller, less bold
-        p.font.bold = False  # Regular weight, not bold
-        p.font.color.rgb = RGBColor(74, 74, 74)  # Body text grey, not accent blue
+        p.font.size = Pt(10)
+        p.font.bold = False
+        p.font.color.rgb = RGBColor(74, 74, 74)  # Body text grey
 
     def _add_leader_line(self, slide, annotation: dict, chart_area: dict):
         """
@@ -1411,93 +1513,159 @@ class MainSlideGeneratorSkill:
 
     def _add_difference_line(self, slide, chart_shape, annotation: dict, chart_area: dict):
         """
-        Add vertical line showing difference between two bars.
+        GLOBAL SKILL 3: Add vertical difference line showing delta between two bars.
+
+        FULLY DYNAMIC AND DATA-DRIVEN IMPLEMENTATION:
+        1. Calculate Geometry: Get top Y-coordinates of start/end bars and X-midpoint between them
+        2. Draw Line: Vertical dashed red line at X-midpoint, from bar1 top to bar2 top
+        3. Place Label: Red text to the RIGHT of the line, vertically centered
+        4. Suppress Redundancy: Return annotated bar indices for data label suppression
+
+        All positions derived from chart data. No static coordinates.
 
         Args:
             slide: PowerPoint slide object
             chart_shape: Chart shape
             annotation: Dict with 'series_index', 'from_category', 'to_category', 'label'
-                      OR legacy 'x', 'y1', 'y2' (deprecated)
             chart_area: Chart area bounds (Inches objects)
+
+        Returns:
+            Tuple of (from_cat_idx, to_cat_idx) for data label suppression
         """
         chart = chart_shape.chart
 
-        # GLOBAL FIX: Extract chart bounds as float inches values
+        # Helper to convert to inches float
         def to_inches_float(val):
             if hasattr(val, 'inches'):
                 return val.inches
             else:
-                return val / 914400  # Assume EMU
+                return val / 914400
 
+        # =========================================================================
+        # STEP 1: CALCULATE GEOMETRY FROM CHART DATA
+        # =========================================================================
         chart_x1 = to_inches_float(chart_area['x1'])
         chart_y1 = to_inches_float(chart_area['y1'])
         chart_width = to_inches_float(chart_area['width'])
         chart_height = to_inches_float(chart_area['height'])
 
-        # GLOBAL FIX: Calculate line position based on actual bar data
-        if 'series_index' in annotation or 'from_category' in annotation:
-            # NEW DATA-DRIVEN APPROACH
-            series_idx = annotation.get('series_index', 0)
-            from_cat_idx = annotation.get('from_category', 0)
-            to_cat_idx = annotation.get('to_category', 1)
+        # Get series and category indices
+        series_idx = annotation.get('series_index', 0)
+        from_cat_idx = annotation.get('from_category', 0)
+        to_cat_idx = annotation.get('to_category', 1)
 
-            series = chart.series[series_idx]
-            num_categories = len(series.points)
+        # Get chart data
+        series = chart.series[series_idx]
+        num_series = len(chart.series)
+        num_categories = len(series.points)
 
-            # Get data values from series.values (ChartData object)
-            series_values = list(series.values)
-            from_value = series_values[from_cat_idx]
-            to_value = series_values[to_cat_idx]
+        # Get data values
+        series_values = list(series.values)
+        from_value = series_values[from_cat_idx]
+        to_value = series_values[to_cat_idx]
 
-            # Get Y-axis range
-            value_axis = chart.value_axis
-            y_min = value_axis.minimum_scale if value_axis.minimum_scale is not None else 0
-            y_max = value_axis.maximum_scale if value_axis.maximum_scale is not None else max(series_values)
-            y_range = y_max - y_min
-            if y_range <= 0:
-                y_range = 1
+        # Get Y-axis range
+        value_axis = chart.value_axis
+        all_values = []
+        for s in chart.series:
+            all_values.extend(list(s.values))
+        data_max = max(all_values)
 
-            # Calculate X position (use from_category position by default)
-            x_ratio = (from_cat_idx + 0.5) / num_categories
-            x_inches = chart_x1 + (x_ratio * chart_width)
+        y_min = value_axis.minimum_scale if value_axis.minimum_scale is not None else 0
+        y_max = value_axis.maximum_scale if value_axis.maximum_scale is not None else data_max * 1.1
+        y_range = y_max - y_min
+        if y_range <= 0:
+            y_range = 1
 
-            # Calculate Y positions
-            from_y_ratio = (from_value - y_min) / y_range
-            to_y_ratio = (to_value - y_min) / y_range
+        # Calculate plot area margins (same as CAGR arrow for consistency)
+        plot_left_margin = 0.12
+        plot_right_margin = 0.02
+        plot_top_margin = 0.08
+        plot_bottom_margin = 0.15
 
-            y1_inches = chart_y1 + ((1 - from_y_ratio) * chart_height)
-            y2_inches = chart_y1 + ((1 - to_y_ratio) * chart_height)
-        else:
-            # LEGACY MANUAL APPROACH (deprecated)
-            x_inches = chart_x1 + (annotation.get('x', 0.5) * chart_width)
-            y1_inches = chart_y1 + ((1 - annotation.get('y1', 0.7)) * chart_height)
-            y2_inches = chart_y1 + ((1 - annotation.get('y2', 0.3)) * chart_height)
+        plot_x1 = chart_x1 + (plot_left_margin * chart_width)
+        plot_width = chart_width * (1 - plot_left_margin - plot_right_margin)
+        plot_y1 = chart_y1 + (plot_top_margin * chart_height)
+        plot_height = chart_height * (1 - plot_top_margin - plot_bottom_margin)
 
-        # Add vertical line connecting the two values
+        # Calculate bar positions
+        gap_width_ratio = 0.5
+        category_width = plot_width / num_categories
+        bar_group_width = category_width / (1 + gap_width_ratio)
+        single_bar_width = bar_group_width / num_series
+        gap_between_categories = category_width - bar_group_width
+
+        def get_bar_center_x(cat_idx, ser_idx):
+            category_start = plot_x1 + (cat_idx * category_width) + (gap_between_categories / 2)
+            bar_start = category_start + (ser_idx * single_bar_width)
+            bar_center = bar_start + (single_bar_width / 2)
+            return bar_center
+
+        def get_bar_top_y(value):
+            value_ratio = (value - y_min) / y_range
+            bar_top_y = plot_y1 + plot_height - (value_ratio * plot_height)
+            return bar_top_y
+
+        # Get bar positions
+        from_bar_x = get_bar_center_x(from_cat_idx, series_idx)
+        from_bar_y = get_bar_top_y(from_value)
+        to_bar_x = get_bar_center_x(to_cat_idx, series_idx)
+        to_bar_y = get_bar_top_y(to_value)
+
+        # =========================================================================
+        # STEP 2: DRAW VERTICAL DASHED RED LINE AT X-MIDPOINT
+        # =========================================================================
+        # X position: midpoint between the two bar centers
+        line_x = (from_bar_x + to_bar_x) / 2
+
+        # Y positions: top of bar 1 to top of bar 2
+        line_y1 = from_bar_y  # Top of first bar
+        line_y2 = to_bar_y    # Top of second bar
+
+        # Draw the vertical dashed line
         line = slide.shapes.add_connector(
             MSO_CONNECTOR.STRAIGHT,
-            Inches(x_inches), Inches(y1_inches),
-            Inches(x_inches), Inches(y2_inches)
+            Inches(line_x), Inches(line_y1),
+            Inches(line_x), Inches(line_y2)
         )
         line.line.color.rgb = RGBColor(230, 81, 102)  # Negative Red
         line.line.width = Pt(1.5)
         line.line.dash_style = MSO_LINE_DASH_STYLE.DASH
 
-        # Add label - position to the RIGHT of the line for clarity
+        # =========================================================================
+        # STEP 3: PLACE LABEL TO THE RIGHT, VERTICALLY CENTERED
+        # =========================================================================
         label_text = annotation.get('label', 'Delta')
+
+        # Calculate line midpoint for vertical centering
+        line_mid_y = (line_y1 + line_y2) / 2
+
+        # Label dimensions
+        label_width = 1.2  # Inches - wide enough for text like "€28 savings (62% reduction)"
+        label_height = 0.4  # Inches - tall enough for two lines if needed
+
+        # Position: immediately to the right of the line, vertically centered
+        label_offset_right = 0.08  # 0.08 inches to the right of the line
+        label_x = line_x + label_offset_right
+        label_y = line_mid_y - (label_height / 2)  # Center vertically on line midpoint
+
         label_box = slide.shapes.add_textbox(
-            Inches(x_inches + (10 / 144)),  # 10px right of line for clarity
-            Inches((y1_inches + y2_inches) / 2 - (15 / 144)),  # Centered vertically
-            Inches(80 / 144),  # Wider for multi-line labels
-            Inches(40 / 144)   # Taller for multi-line labels
+            Inches(label_x),
+            Inches(label_y),
+            Inches(label_width),
+            Inches(label_height)
         )
         label_frame = label_box.text_frame
+        label_frame.word_wrap = True
         label_frame.text = label_text
-        label_frame.word_wrap = True  # Allow wrapping for clarity
         p = label_frame.paragraphs[0]
-        p.font.size = Pt(9)  # Slightly smaller for better fit
-        p.font.color.rgb = RGBColor(230, 81, 102)
-        p.alignment = PP_PARAGRAPH_ALIGNMENT.LEFT  # Left-align for clarity
+        p.font.size = Pt(10)
+        p.font.bold = False
+        p.font.color.rgb = RGBColor(230, 81, 102)  # Negative Red to match line
+        p.alignment = PP_PARAGRAPH_ALIGNMENT.LEFT
+
+        # Return the annotated category indices for data label suppression
+        return (from_cat_idx, to_cat_idx)
 
     def _add_callout(self, slide, annotation: dict, chart_area: dict):
         """

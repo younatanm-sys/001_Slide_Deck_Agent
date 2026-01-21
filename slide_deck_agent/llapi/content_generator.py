@@ -734,8 +734,9 @@ class ContentGenerator:
 
         for slide_dict in slides_data.get("slides", []):
             # Build slide with chart_data if present
+            # Use STANDARD_CONTENT - layout will be determined automatically by template engine
             slide = SlideContent(
-                slide_type=SlideType.TITLE_CONTENT,
+                slide_type=SlideType.STANDARD_CONTENT,
                 title=slide_dict.get("title", "Untitled Slide"),
                 bullet_points=slide_dict.get("bullet_points", []),
                 chart_data=slide_dict.get("chart_data")  # Pass through chart data

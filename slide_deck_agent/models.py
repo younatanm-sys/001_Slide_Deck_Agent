@@ -6,17 +6,26 @@ from pydantic import BaseModel, Field
 
 
 class SlideType(str, Enum):
-    """Types of slides that can be created."""
+    """
+    Types of slides that can be created.
+
+    Note: Layout decisions (50/50, full-width, two-column text) are made
+    automatically by the template engine based on content. These types
+    define the slide's fundamental purpose, not its layout.
+    """
 
     TITLE = "title"
-    TITLE_CONTENT = "title_content"
+    STANDARD_CONTENT = "standard_content"  # Universal content slide - layout determined by content
     SECTION_HEADER = "section_header"
-    TWO_COLUMN = "two_column"
-    BULLET_POINTS = "bullet_points"
-    IMAGE_CAPTION = "image_caption"
     QUOTE = "quote"
     THANK_YOU = "thank_you"
     BLANK = "blank"
+
+    # Legacy aliases for backwards compatibility (map to STANDARD_CONTENT)
+    TITLE_CONTENT = "standard_content"
+    TWO_COLUMN = "standard_content"
+    BULLET_POINTS = "standard_content"
+    IMAGE_CAPTION = "standard_content"
 
 
 class SlideContent(BaseModel):
@@ -39,18 +48,18 @@ class SlideContent(BaseModel):
 
 
 class PresentationRequest(BaseModel):
-    """Request for creating a presentation."""
+    """
+    Request for creating a presentation.
+
+    Note: Color palette is controlled exclusively by the template engine
+    (defined in main_template_config.py). User-configurable colors have been
+    removed to protect brand integrity and ensure consistent, professional output.
+    """
 
     topic: str = Field(description="Main topic or title of the presentation")
     slides: List[SlideContent] = Field(default_factory=list)
     output_path: str = Field(default="presentation.pptx")
-    template: str = Field(default="modern", description="Template style to use")
-
-    # Theme settings
-    primary_color: Optional[str] = Field(default="#1F4788", description="Primary color (hex)")
-    secondary_color: Optional[str] = Field(default="#2E7D32", description="Secondary color (hex)")
-    background_color: Optional[str] = Field(default="#FFFFFF", description="Background color (hex)")
-    text_color: Optional[str] = Field(default="#333333", description="Text color (hex)")
+    template: str = Field(default="main", description="Template to use (main is the only supported template)")
 
     # Metadata
     author: Optional[str] = None

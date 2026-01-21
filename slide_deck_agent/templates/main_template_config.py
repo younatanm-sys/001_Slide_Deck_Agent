@@ -417,8 +417,8 @@ LAYOUT_DISTRIBUTION = {
             'height': px_to_inches(386)
         }
     },
-    'chart_plus_insight_60_40': {
-        'rule': 'left_chart_right_text_50_50',  # 50/50 for better balance
+    'chart_plus_insight_50_50': {
+        'rule': 'left_chart_right_text_50_50',  # 50/50 split for balanced composition
         'chart_area': {
             'x1_px': 96,
             'y1_px': 154,
@@ -581,13 +581,13 @@ CHART_WATERFALL = {
             'grounded': True  # Touch X-axis
         },
         'increase': {
-            'fill_color': '#147B58',  # Primary Green (updated from Accent Blue)
-            'fill_color_rgb': (20, 123, 88),
+            'fill_color': '#005EB8',  # Accent Blue - distinguishes positive drivers from baseline
+            'fill_color_rgb': (0, 94, 184),
             'border': {
                 'line_thickness_pt': 1,
                 'line_thickness': Pt(1),
-                'color': '#147B58',
-                'color_rgb': (20, 123, 88)
+                'color': '#005EB8',
+                'color_rgb': (0, 94, 184)
             },
             'grounded': False  # Float
         },
@@ -720,8 +720,8 @@ SLIDE_BLUEPRINTS = {
         }
     },
     'content_chart_insight': {
-        'layout': 'chart_plus_insight_60_40',
-        'regions': LAYOUT_DISTRIBUTION['chart_plus_insight_60_40'],
+        'layout': 'chart_plus_insight_50_50',
+        'regions': LAYOUT_DISTRIBUTION['chart_plus_insight_50_50'],
         'title': REGIONS['title'],
         'footer': REGIONS['footer']
     },
@@ -742,32 +742,36 @@ SLIDE_BLUEPRINTS = {
         'footer': REGIONS['footer'],
         'two_column_option': {
             'enabled': True,
+            'activation_rules': {
+                'min_bullet_count': 6,  # Trigger two-column if more than 5 bullets
+                'max_character_count': 800  # Or if total text exceeds 800 characters
+            },
             'left_column': {
                 'x1_px': 96,
                 'y1_px': 154,
-                'x2_px': 920,
+                'x2_px': 864,  # Adjusted for 60px gutter: (1728 - 60) / 2 = 834, + 96 = 930... recalc: 96 + 834 = 930, minus half = 864
                 'y2_px': 956,
-                'width_px': 824,
+                'width_px': 834,  # (1728 - 60) / 2 = 834
                 'x1': px_to_inches(96),
                 'y1': px_to_inches(154),
-                'x2': px_to_inches(920),
+                'x2': px_to_inches(930),
                 'y2': px_to_inches(956),
-                'width': px_to_inches(824)
+                'width': px_to_inches(834)
             },
             'right_column': {
-                'x1_px': 1000,
+                'x1_px': 990,  # 930 + 60px gutter
                 'y1_px': 154,
                 'x2_px': 1824,
                 'y2_px': 956,
-                'width_px': 824,
-                'x1': px_to_inches(1000),
+                'width_px': 834,
+                'x1': px_to_inches(990),
                 'y1': px_to_inches(154),
                 'x2': px_to_inches(1824),
                 'y2': px_to_inches(956),
-                'width': px_to_inches(824)
+                'width': px_to_inches(834)
             },
-            'gutter_px': 120,
-            'gutter': px_to_inches(120)
+            'gutter_px': 60,  # Standardized to match horizontal component spacing
+            'gutter': px_to_inches(60)
         }
     }
 }
