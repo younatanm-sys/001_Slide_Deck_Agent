@@ -1633,20 +1633,40 @@ class MainSlideGeneratorSkill:
         line.line.dash_style = MSO_LINE_DASH_STYLE.DASH
 
         # =========================================================================
-        # STEP 3: PLACE LABEL TO THE RIGHT, VERTICALLY CENTERED
+        # STEP 3: COMPOSED BLOCK LABEL - Two-paragraph approach for clean formatting
         # =========================================================================
         label_text = annotation.get('label', 'Delta')
+
+        # STEP 3a: DECONSTRUCT THE LABEL
+        # Split label into primary metric and secondary context
+        # Expected format: "€28 savings (62% reduction)" -> primary: "€28 savings", secondary: "(62% reduction)"
+        # Or: "€28 savings\n(62% reduction)" if newline-separated
+        primary_line = label_text
+        secondary_line = None
+
+        # Try to split on newline first
+        if '\n' in label_text:
+            parts = label_text.split('\n', 1)
+            primary_line = parts[0].strip()
+            secondary_line = parts[1].strip() if len(parts) > 1 else None
+        # Otherwise, try to split on opening parenthesis for secondary context
+        elif '(' in label_text:
+            paren_idx = label_text.find('(')
+            primary_line = label_text[:paren_idx].strip()
+            secondary_line = label_text[paren_idx:].strip()
 
         # Calculate line midpoint for vertical centering
         line_mid_y = (line_y1 + line_y2) / 2
 
-        # Label dimensions
-        label_width = 1.2  # Inches - wide enough for text like "€28 savings (62% reduction)"
-        label_height = 0.4  # Inches - tall enough for two lines if needed
+        # STEP 3b: COMPOSE THE BLOCK
+        # Create text box with appropriate dimensions for two lines
+        label_width = 1.0  # Inches - enough for the text without wrapping
+        label_height = 0.5 if secondary_line else 0.3  # Inches - taller if two lines
 
-        # Position: immediately to the right of the line, vertically centered
-        label_offset_right = 0.08  # 0.08 inches to the right of the line
-        label_x = line_x + label_offset_right
+        # STEP 3c: POSITION THE BLOCK
+        # Horizontal gutter between line and text block
+        label_gutter = 0.1  # 0.1 inches to the right of the line
+        label_x = line_x + label_gutter
         label_y = line_mid_y - (label_height / 2)  # Center vertically on line midpoint
 
         label_box = slide.shapes.add_textbox(
@@ -1656,13 +1676,25 @@ class MainSlideGeneratorSkill:
             Inches(label_height)
         )
         label_frame = label_box.text_frame
-        label_frame.word_wrap = True
-        label_frame.text = label_text
-        p = label_frame.paragraphs[0]
-        p.font.size = Pt(10)
-        p.font.bold = False
-        p.font.color.rgb = RGBColor(230, 81, 102)  # Negative Red to match line
-        p.alignment = PP_PARAGRAPH_ALIGNMENT.LEFT
+        label_frame.word_wrap = False  # No wrapping - we control line breaks explicitly
+        label_frame.auto_size = MSO_AUTO_SIZE.NONE
+
+        # STEP 3d: STYLE INDEPENDENTLY - Primary line (bold, 11pt)
+        p1 = label_frame.paragraphs[0]
+        p1.text = primary_line
+        p1.font.size = Pt(11)
+        p1.font.bold = True
+        p1.font.color.rgb = RGBColor(230, 81, 102)  # Negative Red
+        p1.alignment = PP_PARAGRAPH_ALIGNMENT.CENTER
+
+        # Add secondary line if present (regular, 10pt)
+        if secondary_line:
+            p2 = label_frame.add_paragraph()
+            p2.text = secondary_line
+            p2.font.size = Pt(10)
+            p2.font.bold = False
+            p2.font.color.rgb = RGBColor(230, 81, 102)  # Negative Red
+            p2.alignment = PP_PARAGRAPH_ALIGNMENT.CENTER
 
         # Return the annotated category indices for data label suppression
         return (from_cat_idx, to_cat_idx)
