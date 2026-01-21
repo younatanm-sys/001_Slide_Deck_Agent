@@ -1515,11 +1515,11 @@ class MainSlideGeneratorSkill:
         """
         GLOBAL SKILL 3: Add vertical difference line showing delta between two bars.
 
-        FULLY DYNAMIC AND DATA-DRIVEN IMPLEMENTATION:
-        1. Calculate Geometry: Get top Y-coordinates of start/end bars and X-midpoint between them
-        2. Draw Line: Vertical dashed red line at X-midpoint, from bar1 top to bar2 top
-        3. Place Label: Red text to the RIGHT of the line, vertically centered
-        4. Suppress Redundancy: Return annotated bar indices for data label suppression
+        GUTTER-CENTRIC IMPLEMENTATION:
+        1. Find the Gutter: Calculate the horizontal center of empty space between bars
+        2. Draw on the Line: Draw vertical dashed red line exactly on the Gutter Centerline
+        3. Place Text Next to Line: Position composed text block with 10px padding
+        4. Collision Avoidance: If text overlaps second bar, move it to the left of line
 
         All positions derived from chart data. No static coordinates.
 
@@ -1542,7 +1542,7 @@ class MainSlideGeneratorSkill:
                 return val / 914400
 
         # =========================================================================
-        # STEP 1: CALCULATE GEOMETRY FROM CHART DATA
+        # STEP 1: CALCULATE BAR GEOMETRY FROM CHART DATA
         # =========================================================================
         chart_x1 = to_inches_float(chart_area['x1'])
         chart_y1 = to_inches_float(chart_area['y1'])
@@ -1588,68 +1588,71 @@ class MainSlideGeneratorSkill:
         plot_y1 = chart_y1 + (plot_top_margin * chart_height)
         plot_height = chart_height * (1 - plot_top_margin - plot_bottom_margin)
 
-        # Calculate bar positions
+        # Calculate bar positions - need both edges AND centers
         gap_width_ratio = 0.5
         category_width = plot_width / num_categories
         bar_group_width = category_width / (1 + gap_width_ratio)
         single_bar_width = bar_group_width / num_series
         gap_between_categories = category_width - bar_group_width
 
-        def get_bar_center_x(cat_idx, ser_idx):
+        def get_bar_edges(cat_idx, ser_idx):
+            """Return (left_edge, right_edge) of a bar in inches."""
             category_start = plot_x1 + (cat_idx * category_width) + (gap_between_categories / 2)
             bar_start = category_start + (ser_idx * single_bar_width)
-            bar_center = bar_start + (single_bar_width / 2)
-            return bar_center
+            bar_end = bar_start + single_bar_width
+            return (bar_start, bar_end)
 
         def get_bar_top_y(value):
             value_ratio = (value - y_min) / y_range
             bar_top_y = plot_y1 + plot_height - (value_ratio * plot_height)
             return bar_top_y
 
-        # Get bar positions
-        from_bar_x = get_bar_center_x(from_cat_idx, series_idx)
+        # Get bar edges for both bars
+        from_bar_left, from_bar_right = get_bar_edges(from_cat_idx, series_idx)
+        to_bar_left, to_bar_right = get_bar_edges(to_cat_idx, series_idx)
+
+        # Get bar top Y positions
         from_bar_y = get_bar_top_y(from_value)
-        to_bar_x = get_bar_center_x(to_cat_idx, series_idx)
         to_bar_y = get_bar_top_y(to_value)
 
         # =========================================================================
-        # STEP 2: DRAW VERTICAL DASHED RED LINE AT X-MIDPOINT
+        # STEP 2: FIND THE GUTTER CENTERLINE
         # =========================================================================
-        # X position: midpoint between the two bar centers
-        line_x = (from_bar_x + to_bar_x) / 2
+        # The gutter is the empty space between the right edge of from_bar
+        # and the left edge of to_bar
+        gutter_left = from_bar_right  # Right edge of first bar
+        gutter_right = to_bar_left    # Left edge of second bar
+        gutter_centerline = (gutter_left + gutter_right) / 2
 
         # Y positions: top of bar 1 to top of bar 2
         line_y1 = from_bar_y  # Top of first bar
         line_y2 = to_bar_y    # Top of second bar
 
-        # Draw the vertical dashed line
+        # =========================================================================
+        # STEP 3: DRAW VERTICAL DASHED RED LINE ON GUTTER CENTERLINE
+        # =========================================================================
         line = slide.shapes.add_connector(
             MSO_CONNECTOR.STRAIGHT,
-            Inches(line_x), Inches(line_y1),
-            Inches(line_x), Inches(line_y2)
+            Inches(gutter_centerline), Inches(line_y1),
+            Inches(gutter_centerline), Inches(line_y2)
         )
         line.line.color.rgb = RGBColor(230, 81, 102)  # Negative Red
         line.line.width = Pt(1.5)
         line.line.dash_style = MSO_LINE_DASH_STYLE.DASH
 
         # =========================================================================
-        # STEP 3: COMPOSED BLOCK LABEL - Two-paragraph approach for clean formatting
+        # STEP 4: COMPOSED BLOCK LABEL WITH COLLISION AVOIDANCE
         # =========================================================================
         label_text = annotation.get('label', 'Delta')
 
-        # STEP 3a: DECONSTRUCT THE LABEL
-        # Split label into primary metric and secondary context
-        # Expected format: "€28 savings (62% reduction)" -> primary: "€28 savings", secondary: "(62% reduction)"
-        # Or: "€28 savings\n(62% reduction)" if newline-separated
+        # STEP 4a: DECONSTRUCT THE LABEL
         primary_line = label_text
         secondary_line = None
 
-        # Try to split on newline first
         if '\n' in label_text:
             parts = label_text.split('\n', 1)
             primary_line = parts[0].strip()
             secondary_line = parts[1].strip() if len(parts) > 1 else None
-        # Otherwise, try to split on opening parenthesis for secondary context
         elif '(' in label_text:
             paren_idx = label_text.find('(')
             primary_line = label_text[:paren_idx].strip()
@@ -1658,17 +1661,27 @@ class MainSlideGeneratorSkill:
         # Calculate line midpoint for vertical centering
         line_mid_y = (line_y1 + line_y2) / 2
 
-        # STEP 3b: COMPOSE THE BLOCK
-        # Create text box with appropriate dimensions for two lines
-        label_width = 1.0  # Inches - enough for the text without wrapping
-        label_height = 0.5 if secondary_line else 0.3  # Inches - taller if two lines
+        # STEP 4b: COMPOSE THE BLOCK DIMENSIONS
+        label_width = 1.0  # Inches
+        label_height = 0.5 if secondary_line else 0.3  # Inches
 
-        # STEP 3c: POSITION THE BLOCK
-        # Horizontal gutter between line and text block
-        label_gutter = 0.1  # 0.1 inches to the right of the line
-        label_x = line_x + label_gutter
+        # STEP 4c: POSITION WITH 10px PADDING (convert to inches: 10px / 144 DPI)
+        text_padding = 10 / 144  # 10 pixels at 144 DPI reference
+
+        # Default: place text to the RIGHT of the line
+        label_x = gutter_centerline + text_padding
+        place_on_left = False
+
+        # STEP 4d: COLLISION AVOIDANCE - check if text overlaps second bar
+        label_right_edge = label_x + label_width
+        if label_right_edge > to_bar_left:
+            # Collision detected! Move text to the LEFT of the line
+            label_x = gutter_centerline - text_padding - label_width
+            place_on_left = True
+
         label_y = line_mid_y - (label_height / 2)  # Center vertically on line midpoint
 
+        # Create the text box
         label_box = slide.shapes.add_textbox(
             Inches(label_x),
             Inches(label_y),
@@ -1676,10 +1689,10 @@ class MainSlideGeneratorSkill:
             Inches(label_height)
         )
         label_frame = label_box.text_frame
-        label_frame.word_wrap = False  # No wrapping - we control line breaks explicitly
+        label_frame.word_wrap = False
         label_frame.auto_size = MSO_AUTO_SIZE.NONE
 
-        # STEP 3d: STYLE INDEPENDENTLY - Primary line (bold, 11pt)
+        # STEP 4e: STYLE INDEPENDENTLY - Primary line (bold, 11pt)
         p1 = label_frame.paragraphs[0]
         p1.text = primary_line
         p1.font.size = Pt(11)
