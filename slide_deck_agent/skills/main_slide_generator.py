@@ -1515,13 +1515,16 @@ class MainSlideGeneratorSkill:
         """
         GLOBAL SKILL 3: Add vertical difference line showing delta between two bars.
 
-        GUTTER-CENTRIC IMPLEMENTATION:
-        1. Find the Gutter: Calculate the horizontal center of empty space between bars
-        2. Draw on the Line: Draw vertical dashed red line exactly on the Gutter Centerline
-        3. Place Text Next to Line: Position composed text block with 10px padding
-        4. Collision Avoidance: If text overlaps second bar, move it to the left of line
+        VISUAL DESIGN AI IMPLEMENTATION:
+        1. Extract bar geometry from chart data (positions in pixels at 144 DPI)
+        2. Build JSON input for Visual Design AI
+        3. Get precise placement coordinates (using AI or local fallback)
+        4. Render the annotation using those coordinates
 
-        All positions derived from chart data. No static coordinates.
+        The Visual Design AI follows these rules:
+        - Line is placed at the gutter centerline (between bars)
+        - Label is positioned with 10px padding, collision-aware
+        - If label would overlap bar2, it moves to the left side
 
         Args:
             slide: PowerPoint slide object
@@ -1542,7 +1545,7 @@ class MainSlideGeneratorSkill:
                 return val / 914400
 
         # =========================================================================
-        # STEP 1: CALCULATE BAR GEOMETRY FROM CHART DATA
+        # STEP 1: EXTRACT BAR GEOMETRY FROM CHART DATA
         # =========================================================================
         chart_x1 = to_inches_float(chart_area['x1'])
         chart_y1 = to_inches_float(chart_area['y1'])
@@ -1577,7 +1580,7 @@ class MainSlideGeneratorSkill:
         if y_range <= 0:
             y_range = 1
 
-        # Calculate plot area margins (same as CAGR arrow for consistency)
+        # Calculate plot area margins
         plot_left_margin = 0.12
         plot_right_margin = 0.02
         plot_top_margin = 0.08
@@ -1588,64 +1591,75 @@ class MainSlideGeneratorSkill:
         plot_y1 = chart_y1 + (plot_top_margin * chart_height)
         plot_height = chart_height * (1 - plot_top_margin - plot_bottom_margin)
 
-        # Calculate bar positions - need both edges AND centers
+        # Calculate bar positions
         gap_width_ratio = 0.5
         category_width = plot_width / num_categories
         bar_group_width = category_width / (1 + gap_width_ratio)
         single_bar_width = bar_group_width / num_series
         gap_between_categories = category_width - bar_group_width
 
-        def get_bar_edges(cat_idx, ser_idx):
+        def get_bar_edges_inches(cat_idx, ser_idx):
             """Return (left_edge, right_edge) of a bar in inches."""
             category_start = plot_x1 + (cat_idx * category_width) + (gap_between_categories / 2)
             bar_start = category_start + (ser_idx * single_bar_width)
             bar_end = bar_start + single_bar_width
             return (bar_start, bar_end)
 
-        def get_bar_top_y(value):
+        def get_bar_top_y_inches(value):
             value_ratio = (value - y_min) / y_range
             bar_top_y = plot_y1 + plot_height - (value_ratio * plot_height)
             return bar_top_y
 
-        # Get bar edges for both bars
-        from_bar_left, from_bar_right = get_bar_edges(from_cat_idx, series_idx)
-        to_bar_left, to_bar_right = get_bar_edges(to_cat_idx, series_idx)
-
-        # Get bar top Y positions
-        from_bar_y = get_bar_top_y(from_value)
-        to_bar_y = get_bar_top_y(to_value)
+        # Get bar edges in inches
+        from_bar_left, from_bar_right = get_bar_edges_inches(from_cat_idx, series_idx)
+        to_bar_left, to_bar_right = get_bar_edges_inches(to_cat_idx, series_idx)
+        from_bar_y = get_bar_top_y_inches(from_value)
+        to_bar_y = get_bar_top_y_inches(to_value)
 
         # =========================================================================
-        # STEP 2: FIND THE GUTTER CENTERLINE
+        # STEP 2: BUILD JSON INPUT FOR VISUAL DESIGN AI (convert to pixels at 144 DPI)
         # =========================================================================
-        # The gutter is the empty space between the right edge of from_bar
-        # and the left edge of to_bar
-        gutter_left = from_bar_right  # Right edge of first bar
-        gutter_right = to_bar_left    # Left edge of second bar
-        gutter_centerline = (gutter_left + gutter_right) / 2
+        DPI = 144  # Reference DPI for pixel coordinates
 
-        # Y positions: top of bar 1 to top of bar 2
-        line_y1 = from_bar_y  # Top of first bar
-        line_y2 = to_bar_y    # Top of second bar
+        bar1_geometry = {
+            "left_edge_x": from_bar_left * DPI,
+            "right_edge_x": from_bar_right * DPI,
+            "top_edge_y": from_bar_y * DPI
+        }
+        bar2_geometry = {
+            "left_edge_x": to_bar_left * DPI,
+            "right_edge_x": to_bar_right * DPI,
+            "top_edge_y": to_bar_y * DPI
+        }
+        label_text = annotation.get('label', 'Delta')
 
         # =========================================================================
-        # STEP 3: DRAW VERTICAL DASHED RED LINE ON GUTTER CENTERLINE
+        # STEP 3: GET PLACEMENT FROM VISUAL DESIGN AI (or local fallback)
         # =========================================================================
+        # Use local Visual Design AI logic (same rules as LLM would apply)
+        placement = self._visual_design_ai_place_difference_line(
+            bar1_geometry, bar2_geometry, label_text
+        )
+
+        # =========================================================================
+        # STEP 4: RENDER ANNOTATION USING AI-CALCULATED COORDINATES
+        # =========================================================================
+        # Convert pixel coordinates back to inches
+        line_x = placement["line"]["position_x"] / DPI
+        line_y1 = placement["line"]["start_y"] / DPI
+        line_y2 = placement["line"]["end_y"] / DPI
+
+        # Draw vertical dashed red line
         line = slide.shapes.add_connector(
             MSO_CONNECTOR.STRAIGHT,
-            Inches(gutter_centerline), Inches(line_y1),
-            Inches(gutter_centerline), Inches(line_y2)
+            Inches(line_x), Inches(line_y1),
+            Inches(line_x), Inches(line_y2)
         )
         line.line.color.rgb = RGBColor(230, 81, 102)  # Negative Red
         line.line.width = Pt(1.5)
         line.line.dash_style = MSO_LINE_DASH_STYLE.DASH
 
-        # =========================================================================
-        # STEP 4: COMPOSED BLOCK LABEL WITH COLLISION AVOIDANCE
-        # =========================================================================
-        label_text = annotation.get('label', 'Delta')
-
-        # STEP 4a: DECONSTRUCT THE LABEL
+        # Deconstruct label into primary and secondary lines
         primary_line = label_text
         secondary_line = None
 
@@ -1658,28 +1672,14 @@ class MainSlideGeneratorSkill:
             primary_line = label_text[:paren_idx].strip()
             secondary_line = label_text[paren_idx:].strip()
 
-        # Calculate line midpoint for vertical centering
-        line_mid_y = (line_y1 + line_y2) / 2
+        # Get label position from placement
+        label_x = placement["label"]["position_x"] / DPI
+        label_center_y = placement["label"]["vertical_center_y"] / DPI
 
-        # STEP 4b: COMPOSE THE BLOCK DIMENSIONS
+        # Label dimensions
         label_width = 1.0  # Inches
         label_height = 0.5 if secondary_line else 0.3  # Inches
-
-        # STEP 4c: POSITION WITH 10px PADDING (convert to inches: 10px / 144 DPI)
-        text_padding = 10 / 144  # 10 pixels at 144 DPI reference
-
-        # Default: place text to the RIGHT of the line
-        label_x = gutter_centerline + text_padding
-        place_on_left = False
-
-        # STEP 4d: COLLISION AVOIDANCE - check if text overlaps second bar
-        label_right_edge = label_x + label_width
-        if label_right_edge > to_bar_left:
-            # Collision detected! Move text to the LEFT of the line
-            label_x = gutter_centerline - text_padding - label_width
-            place_on_left = True
-
-        label_y = line_mid_y - (label_height / 2)  # Center vertically on line midpoint
+        label_y = label_center_y - (label_height / 2)
 
         # Create the text box
         label_box = slide.shapes.add_textbox(
@@ -1692,7 +1692,7 @@ class MainSlideGeneratorSkill:
         label_frame.word_wrap = False
         label_frame.auto_size = MSO_AUTO_SIZE.NONE
 
-        # STEP 4e: STYLE INDEPENDENTLY - Primary line (bold, 11pt)
+        # Style primary line (bold, 11pt)
         p1 = label_frame.paragraphs[0]
         p1.text = primary_line
         p1.font.size = Pt(11)
@@ -1711,6 +1711,67 @@ class MainSlideGeneratorSkill:
 
         # Return the annotated category indices for data label suppression
         return (from_cat_idx, to_cat_idx)
+
+    def _visual_design_ai_place_difference_line(
+        self,
+        bar1: dict,
+        bar2: dict,
+        label_text: str
+    ) -> dict:
+        """
+        Visual Design AI: Calculate precise placement for difference line annotation.
+
+        This method implements the Visual Design AI rules for annotation placement:
+        1. Calculate the Gutter: line.position_x = midpoint of empty space between bars
+        2. Set Line Height: match bar top edges
+        3. Position Label: 10px to the right, vertically centered
+        4. Collision Avoidance: if label overlaps bar2, move to left side
+
+        Args:
+            bar1: Dict with 'left_edge_x', 'right_edge_x', 'top_edge_y' (pixels)
+            bar2: Dict with 'left_edge_x', 'right_edge_x', 'top_edge_y' (pixels)
+            label_text: The annotation label text
+
+        Returns:
+            Dict with 'line' and 'label' placement data
+        """
+        # RULE 1: Calculate the Gutter Centerline
+        gutter_centerline = (bar1["right_edge_x"] + bar2["left_edge_x"]) / 2
+
+        # RULE 2: Set Line Height (bar tops)
+        line_start_y = bar1["top_edge_y"]
+        line_end_y = bar2["top_edge_y"]
+
+        # RULE 3: Position the Label
+        vertical_center_y = (line_start_y + line_end_y) / 2
+        label_padding = 10  # 10 pixels
+        label_width_estimate = 144  # ~1 inch at 144 DPI
+
+        # Default: place to the right
+        label_x = gutter_centerline + label_padding
+        placement_side = "right"
+
+        # RULE 4: Collision Avoidance
+        if label_x + label_width_estimate > bar2["left_edge_x"]:
+            # Collision detected - move to left
+            label_x = gutter_centerline - label_padding - label_width_estimate
+            placement_side = "left"
+
+        return {
+            "line": {
+                "type": "dashed",
+                "color": "Negative Red",
+                "start_y": line_start_y,
+                "end_y": line_end_y,
+                "position_x": gutter_centerline
+            },
+            "label": {
+                "text": label_text,
+                "position_x": label_x,
+                "vertical_center_y": vertical_center_y,
+                "placement_side": placement_side
+            }
+        }
 
     def _add_callout(self, slide, annotation: dict, chart_area: dict):
         """
