@@ -568,9 +568,15 @@ CHART_MATRIX = {
 
 # Waterfall Chart Specifications
 CHART_WATERFALL = {
+    # STORY-DRIVEN COLOR ENGINE - WATERFALL CHART RULES (UNBREAKABLE):
+    # - Start/End columns: Primary Green (#147B58) - anchors of the chart
+    # - Increase columns: Sequential Palette - comparative analysis storytelling
+    #   First increase: darkest (#025645), second: (#517B70), etc.
+    # - Decrease columns: Negative Red (#E65166) - negative impact
+    # NOTE: Accent Blue is FORBIDDEN in waterfall charts
     'columns': {
         'start_end': {
-            'fill_color': '#147B58',  # Primary Green
+            'fill_color': '#147B58',  # Primary Green - anchor totals
             'fill_color_rgb': (20, 123, 88),
             'border': {
                 'line_thickness_pt': 1,
@@ -581,18 +587,17 @@ CHART_WATERFALL = {
             'grounded': True  # Touch X-axis
         },
         'increase': {
-            'fill_color': '#005EB8',  # Accent Blue - distinguishes positive drivers from baseline
-            'fill_color_rgb': (0, 94, 184),
-            'border': {
-                'line_thickness_pt': 1,
-                'line_thickness': Pt(1),
-                'color': '#005EB8',
-                'color_rgb': (0, 94, 184)
-            },
+            # Sequential Palette for comparative analysis (darkest to lightest)
+            'sequential_palette': [
+                {'fill_color': '#025645', 'fill_color_rgb': (2, 86, 69)},      # Darkest
+                {'fill_color': '#517B70', 'fill_color_rgb': (81, 123, 112)},   # Medium-dark
+                {'fill_color': '#51A3A3', 'fill_color_rgb': (81, 163, 163)},   # Medium-light
+                {'fill_color': '#A2DAD9', 'fill_color_rgb': (162, 218, 217)},  # Lightest
+            ],
             'grounded': False  # Float
         },
         'decrease': {
-            'fill_color': '#E65166',  # Negative Red
+            'fill_color': '#E65166',  # Negative Red - negative impact
             'fill_color_rgb': (230, 81, 102),
             'border': {
                 'line_thickness_pt': 1,
@@ -639,7 +644,15 @@ TEXT_BULLETED_LIST = {
     },
     'hanging_indent': True,
     'typography': 'T3',
-    'line_spacing_multiplier': 1.5
+    'line_spacing_multiplier': 1.5,
+    # FINDING 3: Dynamic spacing for sparse content (≤3 bullets)
+    'sparse_content_rules': {
+        'max_bullets_for_sparse': 3,       # Apply dynamic spacing for ≤3 bullets
+        'target_fill_percent': 0.55,       # Fill 55% of content zone
+        'min_space_after_pt': 24,          # Minimum spacing between bullets
+        'max_space_after_pt': 48,          # Maximum spacing between bullets
+        'default_space_after_pt': 12       # Default for >3 bullets
+    }
 }
 
 # Callout Box Specifications

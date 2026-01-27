@@ -1,16 +1,18 @@
 """
-Main Slide Generator - v2.0
+Main Slide Generator - v2.1
 ============================
 
-Professional slide generator implementing design specifications v2.0 with:
+Professional slide generator implementing design specifications v2.1 with:
 - PRINCIPLE 1: Zoned Integrity (Title/Content/Footer zones immutable)
 - PRINCIPLE 2: Content-Driven Layouts (Split-Screen 60/40, Full-Width, Hero-Visual)
 - PRINCIPLE 3: Atomic Text Elements (each bullet = separate paragraph)
 - PRINCIPLE 4: Hierarchical Titling (Slide title T1 + Chart title T2)
 - PRINCIPLE 5: Consistent Visual Anchoring (vertical center titles, top-align content)
+- PRINCIPLE 6: Insight Over Information (LLM-powered label generation)
 - Dynamic layout engine (chart+insight, single component, bullets)
 - Chart generation (column, waterfall, matrix)
 - Chart annotations (CAGR arrows, difference lines, callouts)
+- LLM-Powered Label Engine for intelligent annotation text
 - Configurable highlight logic
 - Proper 16:9 aspect ratio (1920x1080px at 144 DPI)
 """
@@ -36,6 +38,7 @@ from ..templates.main_template_config import (
     validate_bounds,
     px_to_inches
 )
+from ..llapi.label_engine import LLMPoweredLabelEngine, create_label_engine
 
 
 class MainSlideGeneratorSkill:
@@ -52,12 +55,21 @@ class MainSlideGeneratorSkill:
     - Uses proper 16:9 aspect ratio (13.33" x 7.5")
     """
 
-    def __init__(self):
-        """Initialize Main slide generator with v2.0 config."""
+    def __init__(self, label_engine_provider: str = "mock"):
+        """
+        Initialize Main slide generator with v2.1 config.
+
+        Args:
+            label_engine_provider: Provider for LLM Label Engine
+                                   ('anthropic', 'openai', or 'mock')
+        """
         self.config = MAIN_CONFIG
         self.grid = self.config['grid']
         self.typography = self.config['typography']
         self.colors = self.config['colors']
+
+        # PRINCIPLE 6: Initialize LLM-Powered Label Engine
+        self.label_engine = create_label_engine(provider=label_engine_provider)
 
     def create_presentation(self, request: PresentationRequest) -> GenerationResult:
         """
@@ -440,6 +452,9 @@ class MainSlideGeneratorSkill:
         PRINCIPLE 5 - Consistent Visual Anchoring: Bullets top-aligned within
         Content zone for consistent horizontal sightline.
 
+        FINDING 3 - Dynamic Spacing: For sparse content (≤3 bullets), spacing
+        is increased to fill 50-60% of content zone height for visual balance.
+
         Args:
             slide: PowerPoint slide object
             slide_content: Slide content with bullets
@@ -451,16 +466,29 @@ class MainSlideGeneratorSkill:
 
         # PRINCIPLE 1, 2: Use full Content zone for text-only layout
         if bullets:
+            # FINDING 3: Dynamic spacing for sparse content
+            space_after_pt = 12  # Default spacing
+            if len(bullets) <= 3 and len(bullets) > 1:
+                # Calculate dynamic spacing to fill 55% of content zone
+                content_height_pt = content_region['height'] * 72  # inches to points
+                target_height = content_height_pt * 0.55  # 55% fill target
+                text_height_estimate = len(bullets) * 24  # ~24pt per line (18pt font + margins)
+                # Calculate spacing between bullets
+                calculated_spacing = (target_height - text_height_estimate) / (len(bullets) - 1)
+                # Clamp to min 24pt, max 48pt
+                space_after_pt = min(48, max(24, calculated_spacing))
+
             self._add_bullet_textbox(
                 slide,
                 bullets,
                 content_region['bounds']['x1'],
                 content_region['bounds']['y1'],
                 px_to_inches(content_region['bounds']['x2_px'] - content_region['bounds']['x1_px']),
-                content_region['height']
+                content_region['height'],
+                space_after_pt=space_after_pt
             )
 
-    def _add_bullet_textbox(self, slide, bullets: List[str], left, top, width, height, vertical_anchor='TOP', chart_center_y=None):
+    def _add_bullet_textbox(self, slide, bullets: List[str], left, top, width, height, vertical_anchor='TOP', chart_center_y=None, space_after_pt=12):
         """
         Add text box with properly formatted bullets.
 
@@ -475,12 +503,16 @@ class MainSlideGeneratorSkill:
         the chart element, not the content zone. This ensures balanced composition
         where elements align to each other's visual weight.
 
+        FINDING 3 - Dynamic Spacing: For sparse content (≤3 bullets), spacing is
+        increased to fill 50-60% of the content zone height.
+
         Args:
             slide: PowerPoint slide object
             bullets: List of bullet points
             left, top, width, height: Position and size in inches
             vertical_anchor: 'TOP' (default) or 'MIDDLE' for centering
             chart_center_y: Optional chart vertical center for relative alignment
+            space_after_pt: Points of spacing after each bullet (default 12pt)
         """
         body_spec = get_typography('T3')
 
@@ -521,9 +553,10 @@ class MainSlideGeneratorSkill:
             p.font.bold = False
             p.font.color.rgb = RGBColor(*body_spec['color_rgb'])
 
-            # FINAL PROFESSIONAL STANDARD 2: Mandatory 12pt line spacing after bullets
-            # This creates clean, consistent rhythm down the page and uses vertical space effectively
-            p.space_after = Pt(12)
+            # FINAL PROFESSIONAL STANDARD 2: Line spacing after bullets
+            # FINDING 3: Dynamic spacing for sparse content (≤3 bullets)
+            # Default 12pt, but increased for sparse layouts to fill vertical space
+            p.space_after = Pt(space_after_pt)
 
     def _apply_bullet_formatting(self, paragraph, level: int = 0):
         """
@@ -1062,28 +1095,45 @@ class MainSlideGeneratorSkill:
         # GLOBAL SKILL 4: Get dynamic typography based on label density
         dynamic_typography = self._get_dynamic_chart_typography(categories, 1)
 
-        # GLOBAL SKILL 1: Apply Story-Driven Color Engine to waterfall
-        # Waterfall uses distinct colors: Primary Green for baseline, Accent Blue for increases, Red for decreases
-        primary_green_rgb = (20, 123, 88)   # Start/End - baseline values
-        accent_blue_rgb = (0, 94, 184)       # Increase - positive drivers
-        negative_red_rgb = (230, 81, 102)    # Decrease - negative drivers
+        # STORY-DRIVEN COLOR ENGINE - WATERFALL CHART RULES (UNBREAKABLE):
+        # - Start/End columns: Primary Green (#147B58) - anchors of the chart
+        # - Increase columns: Sequential Palette - comparative analysis storytelling
+        #   First increase: darkest (#025645), second: (#517B70), etc.
+        # - Decrease columns: Negative Red (#E65166) - negative impact
+        # NOTE: Accent Blue is FORBIDDEN in waterfall charts
+        primary_green_rgb = (20, 123, 88)   # Start/End - anchor values
+        negative_red_rgb = (230, 81, 102)   # Decrease - negative impact
+
+        # Sequential palette for increase columns (darkest to lightest)
+        sequential_palette_rgb = [
+            (2, 86, 69),      # #025645 - darkest
+            (81, 123, 112),   # #517B70
+            (81, 163, 163),   # #51A3A3
+            (162, 218, 217),  # #A2DAD9 - lightest
+        ]
+
+        # Track which increase we're on for sequential coloring
+        increase_index = 0
 
         series = chart.series[0]
         for idx, point in enumerate(series.points):
             point_type = types[idx] if idx < len(types) else 'increase'
 
             if point_type in ['start', 'end']:
-                # Start/End: Primary Green - these are baseline totals
+                # Start/End: Primary Green - these are the anchors
                 point.format.fill.solid()
                 point.format.fill.fore_color.rgb = RGBColor(*primary_green_rgb)
-            elif point_type == 'increase':
-                # Increase: Accent Blue - clearly distinguishes positive drivers from baseline
-                point.format.fill.solid()
-                point.format.fill.fore_color.rgb = RGBColor(*accent_blue_rgb)
-            else:  # decrease
+            elif point_type == 'decrease':
                 # Decrease: Negative Red - shows negative impact
                 point.format.fill.solid()
                 point.format.fill.fore_color.rgb = RGBColor(*negative_red_rgb)
+            else:  # increase
+                # Increase: Sequential Palette - comparative analysis
+                # Cycle through palette if more increases than colors
+                color_rgb = sequential_palette_rgb[increase_index % len(sequential_palette_rgb)]
+                point.format.fill.solid()
+                point.format.fill.fore_color.rgb = RGBColor(*color_rgb)
+                increase_index += 1
 
             # FINAL PROFESSIONAL STANDARD 3: Borderless
             point.format.line.fill.background()
@@ -1228,14 +1278,20 @@ class MainSlideGeneratorSkill:
         1. Get Anchor Coordinates: Programmatically determine exact (X, Y) of bar tops
         2. Draw Curved Line: Quadratic Bézier curve with vertical lift offset
         3. Calculate Apex: Determine highest point of the curve
-        4. Position Label: Place text precisely above the apex, horizontally centered
+        4. Generate Label: Use LLM Label Engine for insight-driven text (PRINCIPLE 6)
+        5. Position Label: Place text precisely above the apex, horizontally centered
 
         All positions are derived procedurally from chart data. No hardcoded coordinates.
+
+        PRINCIPLE 6 - Insight Over Information:
+        If annotation contains 'label_generation_request', the LLM Label Engine
+        is used to generate human-readable CAGR labels.
 
         Args:
             slide: PowerPoint slide object
             chart_shape: Chart shape
-            annotation: Dict with 'series_index', 'from_category', 'to_category', 'label'
+            annotation: Dict with 'series_index', 'from_category', 'to_category',
+                        and either 'label' (pre-formatted) or 'label_generation_request'
             chart_area: Chart area bounds (Inches objects)
         """
         from pptx.util import Emu
@@ -1403,9 +1459,24 @@ class MainSlideGeneratorSkill:
         apex_x = curve_points[apex_idx][0]
 
         # =========================================================================
-        # STEP 4: POSITION THE LABEL ABOVE THE APEX
+        # STEP 4: GENERATE LABEL USING LLM LABEL ENGINE (PRINCIPLE 6)
         # =========================================================================
-        label_text = annotation.get('label', 'CAGR')
+        # Check if annotation contains label_generation_request for dynamic generation
+        if 'label_generation_request' in annotation:
+            req = annotation['label_generation_request']
+            # Extract data series from chart if not provided
+            data_series = req.get('data_series', series_values[from_cat_idx:to_cat_idx+1])
+            cagr_value = req.get('cagr_value', 0)
+
+            # Use LLM Label Engine to generate insight-driven CAGR label
+            label_response = self.label_engine.generate_cagr_label(
+                data_series=data_series,
+                cagr_value=cagr_value
+            )
+            label_text = label_response.label
+        else:
+            # Fall back to pre-formatted label
+            label_text = annotation.get('label', 'CAGR')
 
         # Position label above apex, horizontally centered
         label_width = 0.9  # Inches
@@ -1515,21 +1586,28 @@ class MainSlideGeneratorSkill:
         """
         GLOBAL SKILL 3: Add vertical difference line showing delta between two bars.
 
-        VISUAL DESIGN AI IMPLEMENTATION:
+        VISUAL DESIGN AI + LLM LABEL ENGINE IMPLEMENTATION:
         1. Extract bar geometry from chart data (positions in pixels at 144 DPI)
         2. Build JSON input for Visual Design AI
         3. Get precise placement coordinates (using AI or local fallback)
-        4. Render the annotation using those coordinates
+        4. Generate label text using LLM Label Engine (PRINCIPLE 6)
+        5. Render the annotation using those coordinates
 
         The Visual Design AI follows these rules:
         - Line is placed at the gutter centerline (between bars)
         - Label is positioned with 10px padding, collision-aware
         - If label would overlap bar2, it moves to the left side
 
+        PRINCIPLE 6 - Insight Over Information:
+        If annotation contains 'label_generation_request', the LLM Label Engine
+        is used to generate human-readable, insight-driven labels instead of
+        using pre-formatted text.
+
         Args:
             slide: PowerPoint slide object
             chart_shape: Chart shape
-            annotation: Dict with 'series_index', 'from_category', 'to_category', 'label'
+            annotation: Dict with 'series_index', 'from_category', 'to_category',
+                        and either 'label' (pre-formatted) or 'label_generation_request'
             chart_area: Chart area bounds (Inches objects)
 
         Returns:
@@ -1573,18 +1651,79 @@ class MainSlideGeneratorSkill:
         for s in chart.series:
             all_values.extend(list(s.values))
         data_max = max(all_values)
+        data_min = min(0, min(all_values))  # Include 0 or negative values
 
-        y_min = value_axis.minimum_scale if value_axis.minimum_scale is not None else 0
-        y_max = value_axis.maximum_scale if value_axis.maximum_scale is not None else data_max * 1.1
+        # Get actual axis scale - PowerPoint rounds to "nice" numbers
+        # PowerPoint uses a consistent interval for the entire axis, so we need to
+        # determine the interval first, then apply it to both min and max.
+
+        # Nice intervals PowerPoint typically uses
+        nice_intervals = [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000]
+
+        # Determine y_max
+        if value_axis.maximum_scale is not None:
+            y_max = value_axis.maximum_scale
+            # Infer interval from explicit max
+            axis_interval = y_max / 5  # assume ~5 gridlines
+        else:
+            # PowerPoint uses a "nice number" algorithm that picks axis maximums
+            # based on the data range, choosing intervals that give ~4-6 gridlines.
+            raw_max = data_max * 1.05  # PowerPoint uses ~5% headroom
+
+            # Find the best interval that gives 4-7 gridlines for the full range
+            axis_interval = 100  # fallback
+            y_max = raw_max  # fallback
+            full_range = raw_max - data_min if data_min < 0 else raw_max
+            for interval in nice_intervals:
+                candidate_max = math.ceil(raw_max / interval) * interval
+                candidate_min = math.floor(data_min / interval) * interval if data_min < 0 else 0
+                num_gridlines = (candidate_max - candidate_min) / interval
+                if 4 <= num_gridlines <= 8 and candidate_max >= raw_max:
+                    y_max = candidate_max
+                    axis_interval = interval
+                    break
+            else:
+                # Fallback
+                raw_max = data_max * 1.1
+                if raw_max <= 10:
+                    y_max = math.ceil(raw_max)
+                elif raw_max <= 100:
+                    y_max = math.ceil(raw_max / 10) * 10
+                else:
+                    y_max = math.ceil(raw_max / 50) * 50
+
+        # Determine y_min using the same interval
+        if value_axis.minimum_scale is not None:
+            y_min = value_axis.minimum_scale
+        elif data_min < 0:
+            # Round down to the same interval used for y_max
+            y_min = math.floor(data_min / axis_interval) * axis_interval
+        else:
+            y_min = 0
+
         y_range = y_max - y_min
         if y_range <= 0:
             y_range = 1
 
-        # Calculate plot area margins
-        plot_left_margin = 0.12
-        plot_right_margin = 0.02
-        plot_top_margin = 0.08
-        plot_bottom_margin = 0.15
+        # Calculate plot area margins - RECALIBRATED for python-pptx chart rendering
+        # These margins account for axis labels, tick marks, data labels, and chart title
+        # Calibrated by visual comparison with actual PowerPoint output
+        #
+        # IMPORTANT: PowerPoint's chart rendering has significant margins:
+        # - Top: Chart title + series name + space for data labels above bars
+        # - Bottom: Category axis labels (potentially multi-line)
+        # - Left: Value axis labels
+        # - Right: Minimal padding
+        #
+        # VISUAL CALIBRATION (from screenshots):
+        # - Chart title takes ~10% of chart height
+        # - Series name/subtitle takes ~5%
+        # - Data labels above bars need ~5% clearance
+        # - Bottom axis labels take ~12-15%
+        plot_left_margin = 0.10   # Space for Y-axis labels
+        plot_right_margin = 0.02  # Minimal right padding
+        plot_top_margin = 0.22    # Chart title + series name + data label headroom
+        plot_bottom_margin = 0.14 # Category axis labels (multi-line)
 
         plot_x1 = chart_x1 + (plot_left_margin * chart_width)
         plot_width = chart_width * (1 - plot_left_margin - plot_right_margin)
@@ -1631,7 +1770,24 @@ class MainSlideGeneratorSkill:
             "right_edge_x": to_bar_right * DPI,
             "top_edge_y": to_bar_y * DPI
         }
-        label_text = annotation.get('label', 'Delta')
+
+        # =========================================================================
+        # PRINCIPLE 6: GENERATE LABEL USING LLM LABEL ENGINE
+        # =========================================================================
+        # Check if annotation contains label_generation_request for dynamic generation
+        if 'label_generation_request' in annotation:
+            req = annotation['label_generation_request']
+            # Use LLM Label Engine to generate insight-driven label
+            label_response = self.label_engine.generate_difference_label(
+                start_value=req.get('start_value', from_value),
+                end_value=req.get('end_value', to_value),
+                currency=req.get('currency', '€'),
+                direction=req.get('direction', 'reduction')
+            )
+            label_text = f"{label_response.primary}\n{label_response.secondary}"
+        else:
+            # Fall back to pre-formatted label
+            label_text = annotation.get('label', 'Delta')
 
         # =========================================================================
         # STEP 3: GET PLACEMENT FROM VISUAL DESIGN AI (or local fallback)
@@ -1646,18 +1802,25 @@ class MainSlideGeneratorSkill:
         # =========================================================================
         # Convert pixel coordinates back to inches
         line_x = placement["line"]["position_x"] / DPI
-        line_y1 = placement["line"]["start_y"] / DPI
-        line_y2 = placement["line"]["end_y"] / DPI
+        line_y1 = placement["line"]["start_y"] / DPI  # Top of bar1
+        line_y2 = placement["line"]["end_y"] / DPI    # Top of bar2
 
-        # Draw vertical dashed red line
-        line = slide.shapes.add_connector(
-            MSO_CONNECTOR.STRAIGHT,
-            Inches(line_x), Inches(line_y1),
-            Inches(line_x), Inches(line_y2)
-        )
-        line.line.color.rgb = RGBColor(230, 81, 102)  # Negative Red
-        line.line.width = Pt(1.5)
-        line.line.dash_style = MSO_LINE_DASH_STYLE.DASH
+        # UNBREAKABLE RULE: Line must span EXACTLY from bar1 top to bar2 top
+        # Ensure line_y1 is the smaller Y (higher on screen) and line_y2 is larger
+        line_top_y = min(line_y1, line_y2)
+        line_bottom_y = max(line_y1, line_y2)
+
+        # Draw vertical dashed red line using freeform for precise control
+        # The line spans exactly from the top of the taller bar to the top of the shorter bar
+        builder = slide.shapes.build_freeform(Inches(line_x), Inches(line_top_y))
+        builder.add_line_segments([(Inches(line_x), Inches(line_bottom_y))], close=False)
+        line_shape = builder.convert_to_shape()
+
+        # Style the line
+        line_shape.line.color.rgb = RGBColor(230, 81, 102)  # Negative Red
+        line_shape.line.width = Pt(1.5)
+        line_shape.line.dash_style = MSO_LINE_DASH_STYLE.DASH
+        line_shape.fill.background()  # No fill
 
         # Deconstruct label into primary and secondary lines
         primary_line = label_text
@@ -1724,7 +1887,7 @@ class MainSlideGeneratorSkill:
         This method implements the Visual Design AI rules for annotation placement:
         1. Calculate the Gutter: line.position_x = midpoint of empty space between bars
         2. Set Line Height: match bar top edges
-        3. Position Label: 10px to the right, vertically centered
+        3. Position Label: to the RIGHT of the line by default, vertically centered
         4. Collision Avoidance: if label overlaps bar2, move to left side
 
         Args:
@@ -1742,20 +1905,31 @@ class MainSlideGeneratorSkill:
         line_start_y = bar1["top_edge_y"]
         line_end_y = bar2["top_edge_y"]
 
-        # RULE 3: Position the Label
+        # RULE 3: Position the Label - ALWAYS to the RIGHT of the gutter line
         vertical_center_y = (line_start_y + line_end_y) / 2
-        label_padding = 10  # 10 pixels
-        label_width_estimate = 144  # ~1 inch at 144 DPI
+        label_padding = 15  # 15 pixels padding from line
+        label_width_estimate = 120  # ~0.83 inch at 144 DPI
 
-        # Default: place to the right
+        # Calculate available space on right side (between gutter and bar2)
+        space_on_right = bar2["left_edge_x"] - gutter_centerline
+
+        # Calculate available space on left side (between bar1 and gutter)
+        space_on_left = gutter_centerline - bar1["right_edge_x"]
+
+        # Default: place to the RIGHT (preferred - cleaner visual flow)
+        # Position label starting right after the gutter line + padding
         label_x = gutter_centerline + label_padding
         placement_side = "right"
 
-        # RULE 4: Collision Avoidance
+        # RULE 4: Collision Avoidance - only move left if RIGHT side is too cramped
+        # Check if label would extend past bar2's left edge
         if label_x + label_width_estimate > bar2["left_edge_x"]:
-            # Collision detected - move to left
-            label_x = gutter_centerline - label_padding - label_width_estimate
-            placement_side = "left"
+            # Right side collision - check if left side has more space
+            if space_on_left > label_width_estimate + label_padding:
+                # Move to left side
+                label_x = gutter_centerline - label_padding - label_width_estimate
+                placement_side = "left"
+            # else: keep on right even if cramped (better than blocking bar1)
 
         return {
             "line": {
