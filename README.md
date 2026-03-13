@@ -2,6 +2,8 @@
 
 An AI-powered agent that generates professional PowerPoint presentations using Claude API and Claude Code.
 
+**Requirements: Python 3.10 or higher**
+
 ---
 
 ## Quick Start with Claude Desktop App
@@ -37,21 +39,21 @@ cd 001_Slide_Deck_Agent
 
 ### Step 4: Ask Claude to Generate a Presentation
 
-In the Claude chat, type something like:
+In the Claude chat, type exactly:
 
 > "Run the main_retail_transformation_llapi.py script. Here is my API key: sk-ant-your-key-here"
 
-Or simply:
+Claude will install dependencies, run the script, and generate a `.pptx` file in the project folder. The script typically completes in 15–30 seconds. You'll see a progress log in the terminal ending with a message like:
 
-> "Generate a presentation about [your topic] using the slide deck agent"
-
-Claude will run the script and create your PowerPoint file.
+```
+✓ Presentation created successfully!
+  File:   main_retail_transformation_llapi.pptx
+  Slides: 10
+```
 
 ### Step 5: Find Your Presentation
 
-The generated `.pptx` file will be saved in the project folder. You can ask Claude:
-
-> "Where was the presentation saved?"
+The file `main_retail_transformation_llapi.pptx` will be saved in the project folder. Open it with PowerPoint, Keynote, or Google Slides.
 
 ---
 
@@ -59,14 +61,40 @@ The generated `.pptx` file will be saved in the project folder. You can ask Clau
 
 If you prefer running manually from Terminal:
 
-### Step 1: Install Python Dependencies
+### Step 1: Check Your Python Version
+
+```bash
+python --version
+```
+
+You need Python 3.10 or higher. If you see 3.9 or lower, install a newer version from python.org before continuing.
+
+### Step 2: Create a Virtual Environment (recommended)
 
 ```bash
 cd 001_Slide_Deck_Agent
-pip install python-pptx anthropic pydantic pillow
+python -m venv venv
 ```
 
-### Step 2: Set Your Anthropic API Key
+**Mac/Linux — activate:**
+```bash
+source venv/bin/activate
+```
+
+**Windows (PowerShell) — activate:**
+```powershell
+venv\Scripts\Activate.ps1
+```
+
+You should see `(venv)` appear at the start of your terminal prompt.
+
+### Step 3: Install Python Dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### Step 4: Set Your Anthropic API Key
 
 **Mac/Linux:**
 ```bash
@@ -78,13 +106,25 @@ export ANTHROPIC_API_KEY="sk-ant-your-key-here"
 $env:ANTHROPIC_API_KEY="sk-ant-your-key-here"
 ```
 
-### Step 3: Run the Main Script
+> This only lasts for your current terminal session. To make it permanent, add the export line to your `~/.zshrc` or `~/.bashrc` file.
+
+### Step 5: Run the Main Script
 
 ```bash
 python main_retail_transformation_llapi.py
 ```
 
-**No API key? Use mock mode for testing:**
+The script will print a progress log and finish in roughly 15–30 seconds. A successful run ends with:
+
+```
+✓ Presentation created successfully!
+  File:   main_retail_transformation_llapi.pptx
+  Slides: 10
+```
+
+Open `main_retail_transformation_llapi.pptx` from the project folder in PowerPoint, Keynote, or Google Slides.
+
+**No API key yet? Use mock mode to verify your install works:**
 ```bash
 python main_retail_transformation_llapi.py --mock
 ```
