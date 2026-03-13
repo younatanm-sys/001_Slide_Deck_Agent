@@ -8,9 +8,16 @@ An AI-powered agent that generates professional PowerPoint presentations using C
 
 If you're using the **Claude Desktop App** (with Claude Code enabled), follow these steps:
 
-### Step 1: Download and Unzip the Project
+### Step 1: Clone or Download the Project
 
-1. Download the `Slide_Deck_Agent.zip` file you received
+**Option A — Clone from GitHub (recommended):**
+```bash
+git clone https://github.com/younatanm-sys/001_Slide_Deck_Agent.git
+cd 001_Slide_Deck_Agent
+```
+
+**Option B — Download ZIP:**
+1. Go to the GitHub repository page and click **Code → Download ZIP**
 2. Unzip it to a location on your computer (e.g., Desktop or Documents)
 3. You should now have a folder called `001_Slide_Deck_Agent`
 
@@ -18,7 +25,7 @@ If you're using the **Claude Desktop App** (with Claude Code enabled), follow th
 
 1. Open the **Claude Desktop App**
 2. Click the folder icon (bottom left) or use `Cmd+O` (Mac) / `Ctrl+O` (Windows)
-3. Navigate to and select the `001_Slide_Deck_Agent` folder you just unzipped
+3. Navigate to and select the `001_Slide_Deck_Agent` folder
 4. Claude will now have access to all the project files
 
 ### Step 3: Get Your Anthropic API Key
@@ -56,7 +63,7 @@ If you prefer running manually from Terminal:
 
 ```bash
 cd 001_Slide_Deck_Agent
-pip install python-pptx anthropic pydantic
+pip install python-pptx anthropic pydantic pillow
 ```
 
 ### Step 2: Set Your Anthropic API Key
@@ -71,10 +78,24 @@ export ANTHROPIC_API_KEY="sk-ant-your-key-here"
 $env:ANTHROPIC_API_KEY="sk-ant-your-key-here"
 ```
 
-### Step 3: Run an Example
+### Step 3: Run the Main Script
 
 ```bash
 python main_retail_transformation_llapi.py
+```
+
+**No API key? Use mock mode for testing:**
+```bash
+python main_retail_transformation_llapi.py --mock
+```
+
+**Additional options:**
+```bash
+# Limit number of slides
+python main_retail_transformation_llapi.py --max-slides 8
+
+# Custom output file
+python main_retail_transformation_llapi.py --output my_presentation.pptx
 ```
 
 ---
@@ -87,7 +108,9 @@ python main_retail_transformation_llapi.py
 | $20-$100/month fixed | Pay per token (~$3/million input tokens) |
 | For personal chat | For running this tool |
 
-**You need an Anthropic API key** from console.anthropic.com - this is separate from your Claude Pro/Max subscription.
+**You need an Anthropic API key** from console.anthropic.com — this is separate from your Claude Pro/Max subscription.
+
+> **Tip:** Run with `--mock` flag to test the full pipeline without using any API credits.
 
 ---
 
@@ -104,16 +127,18 @@ python main_retail_transformation_llapi.py
 │  │  └──────────────┘  └───────────────┘  └────────────────┘          │  │
 │  └────────────────────────────────────────────────────────────────────┘  │
 │  ┌────────────────────────────────────────────────────────────────────┐  │
-│  │  Intelligence Layer (Claude API - claude-3-5-sonnet)               │  │
+│  │  LLAPI Layer (Claude API - claude-3-5-sonnet)                      │  │
+│  │  ContentGenerator: Source Document → Structured SlideContent       │  │
 │  │  • Extracts key insights, metrics & executive takeaways            │  │
 │  │  • Structures logical narrative flow across slides                 │  │
-│  │  • Identifies optimal visualization type for each dataset          │  │
+│  │  • Identifies optimal chart type for each dataset                  │  │
 │  │  • Generates compelling headlines & supporting content             │  │
+│  │  LLM Label Engine: Insight-driven chart annotation text            │  │
 │  └────────────────────────────────────────────────────────────────────┘  │
 └──────────────────────────────────┬───────────────────────────────────────┘
                                    ▼
 ┌──────────────────────────────────────────────────────────────────────────┐
-│  DESIGN TEMPLATE ENGINE                                                  │
+│  DESIGN TEMPLATE ENGINE (Main v2.1)                                      │
 │  ┌────────────────────────┐  ┌────────────────────────────────────────┐  │
 │  │  Typography System     │  │  Color Intelligence                    │  │
 │  │  • T1-T5 (24pt → 9pt)  │  │  • Story-driven modes: comparison,     │  │
@@ -121,9 +146,12 @@ python main_retail_transformation_llapi.py
 │  │  • Density-aware scale │  │  • Semantic color meaning              │  │
 │  └────────────────────────┘  └────────────────────────────────────────┘  │
 │  ┌────────────────────────┐  ┌────────────────────────────────────────┐  │
-│  │  Chart Formatting      │  │  Smart Layout Engine                   │  │
-│  │  • Data-anchored CAGR  │  │  • Auto legend redundancy removal      │  │
-│  │  • Callouts & leaders  │  │  • Responsive positioning              │  │
+│  │  Chart Generation      │  │  Smart Layout Engine                   │  │
+│  │  • Column, Waterfall,  │  │  • Auto legend redundancy removal      │  │
+│  │    Matrix chart types  │  │  • Responsive Split-Screen 60/40       │  │
+│  │  • Data-anchored CAGR  │  │  • Full-Width and Hero-Visual modes    │  │
+│  │  • Difference Lines    │  │  • Zoned Integrity (Title/Content/     │  │
+│  │  • Callout annotations │  │    Footer zones immutable)             │  │
 │  └────────────────────────┘  └────────────────────────────────────────┘  │
 └──────────────────────────────────┬───────────────────────────────────────┘
                                    ▼
@@ -139,12 +167,15 @@ python main_retail_transformation_llapi.py
 
 ### Core Capabilities
 
-- **Content Analysis & Structuring**: Automatically analyze topics and generate appropriate slide structures
-- **Professional Templates**: Multiple slide types including title, content, bullet points, two-column, quotes, and more
-- **Design Optimization**: 8+ professional color schemes with automatic contrast optimization
+- **AI Content Generation**: Claude API reads your source document and generates a full slide structure — extracting key insights, metrics, and narrative flow automatically
+- **Chart Generation**: Column charts, waterfall charts, and matrix charts rendered directly in PowerPoint
+- **Chart Annotations**: CAGR arrows, difference lines, and callout labels placed automatically and labeled with AI-generated insight text
+- **LLM Label Engine**: AI-powered annotation text that writes insight-driven labels (e.g. "45% CAGR") rather than raw data values
+- **Professional Templates**: Multiple slide types including title, content, bullet points, two-column, charts, and more
+- **Design Optimization**: 8+ professional color schemes with automatic contrast optimization and story-driven color logic
 - **Full Customization**: Complete control over every aspect of your presentation
 - **Speaker Notes**: Add presenter notes to any slide
-- **Metadata Support**: Include author, company, and other metadata
+- **Mock Mode**: Run the full pipeline without an API key for testing
 
 ### Slide Types
 
@@ -152,10 +183,20 @@ python main_retail_transformation_llapi.py
 - **Title & Content**: Standard content slide with title and body text
 - **Section Header**: Visual break between presentation sections
 - **Bullet Points**: Lists with proper hierarchy and spacing
-- **Two Column**: Side-by-side content comparison
+- **Two Column**: Side-by-side content comparison (60/40 split)
+- **Chart + Insight**: Chart on left with AI-generated insight bullets on right
 - **Quote**: Highlighted quotations with attribution
 - **Thank You**: Closing slide with call-to-action
 - **Blank**: Custom layouts
+
+### Chart Capabilities
+
+- **Column Charts**: Grouped and single-series bar/column charts
+- **Waterfall Charts**: Cumulative contribution charts for financials
+- **Matrix Charts**: Multi-metric comparison grids
+- **CAGR Annotations**: Automatically calculated and placed growth rate arrows
+- **Difference Lines**: Visual connectors highlighting deltas between data points
+- **Callout Labels**: AI-generated insight text anchored to data points
 
 ---
 
@@ -304,23 +345,37 @@ print(colors)  # {'primary': '#2C3E50', 'secondary': '#3498DB', ...}
 
 The agent uses three specialized skills:
 
-### 1. SlideGeneratorSkill
+### 1. MainSlideGeneratorSkill
 
-Handles the actual PowerPoint file creation with proper formatting, layouts, and styling.
+The primary slide renderer implementing the v2.1 design specification. Handles PowerPoint file creation with proper formatting, chart generation, chart annotations, and layout decisions.
 
-### 2. ContentAnalyzerSkill
+### 2. SlideGeneratorSkill
+
+A general-purpose slide generator for standard slide types without chart support.
+
+### 3. ContentAnalyzerSkill
 
 - Analyzes topics and generates appropriate slide structures
 - Structures raw content into logical slides
 - Splits long content across multiple slides
 - Extracts bullet points from text
 
-### 3. DesignOptimizerSkill
+### 4. DesignOptimizerSkill
 
 - Applies professional color schemes
 - Ensures WCAG AA contrast compliance
 - Suggests appropriate schemes based on topic
 - Optimizes visual hierarchy
+
+## LLAPI Layer
+
+The `slide_deck_agent/llapi/` module handles all Claude API interactions:
+
+- **ContentGenerator**: Reads a source document and produces structured `SlideContent` objects ready for rendering
+- **LLMPoweredLabelEngine**: Generates insight-driven annotation text for chart labels (e.g. turns raw data into "45% CAGR — fastest growing region")
+- **DocumentParser**: Parses and preprocesses source documents
+- **StructureRecommender**: Recommends slide structure based on content type and audience
+- **AnnotationPlacer**: Determines optimal placement for chart annotations
 
 ## API Reference
 
@@ -347,6 +402,10 @@ Returns list of available color scheme names.
 **`get_color_scheme_preview(scheme_name)`**
 
 Returns color values for a specific scheme.
+
+**`get_available_templates()`**
+
+Returns list of available company templates.
 
 **`validate_presentation_request(request)`**
 
@@ -381,7 +440,8 @@ SlideContent(
     right_content: Optional[str] = None,  # For two-column
     quote_text: Optional[str] = None,
     quote_author: Optional[str] = None,
-    notes: Optional[str] = None  # Speaker notes
+    chart_data: Optional[Dict] = None,   # For chart slides
+    notes: Optional[str] = None          # Speaker notes
 )
 ```
 
@@ -439,18 +499,32 @@ python examples/basic_example.py
 001_Slide_Deck_Agent/
 ├── slide_deck_agent/
 │   ├── __init__.py
-│   ├── agent.py              # Main agent class
-│   ├── models.py             # Data models
-│   └── skills/
+│   ├── agent.py                      # Main agent class
+│   ├── models.py                     # Data models
+│   ├── skills/
+│   │   ├── __init__.py
+│   │   ├── main_slide_generator.py   # Primary renderer (v2.1 spec)
+│   │   ├── slide_generator.py        # General-purpose slide renderer
+│   │   ├── content_analyzer.py       # Content structuring
+│   │   └── design_optimizer.py       # Design and colors
+│   ├── llapi/
+│   │   ├── __init__.py
+│   │   ├── content_generator.py      # Claude API → SlideContent objects
+│   │   ├── label_engine.py           # LLM-powered chart annotation text
+│   │   ├── annotation_placer.py      # Chart annotation placement
+│   │   ├── document_parser.py        # Source document preprocessing
+│   │   ├── structure_recommender.py  # Slide structure recommendations
+│   │   └── prompt_templates.py       # Claude prompt templates
+│   └── templates/
 │       ├── __init__.py
-│       ├── slide_generator.py    # PowerPoint generation
-│       ├── content_analyzer.py   # Content structuring
-│       └── design_optimizer.py   # Design and colors
+│       ├── template_registry.py      # Template registry
+│       └── main_template_config.py   # Main v2.1 design config
 ├── examples/
 │   ├── basic_example.py
 │   ├── advanced_example.py
 │   ├── custom_slides_example.py
 │   └── color_schemes_demo.py
+├── main_retail_transformation_llapi.py  # Main entry point / demo
 ├── requirements.txt
 ├── pyproject.toml
 └── README.md
@@ -523,30 +597,9 @@ request = PresentationRequest(
 ## Limitations
 
 - Images must be provided as file paths (not embedded)
-- Charts and graphs not yet supported (planned)
 - Animation and transitions not supported
 - Video embedding not supported
 - Master slide editing limited to code-defined templates
-
-## Future Enhancements
-
-- Integration with Claude API for AI-powered content generation
-- Chart and graph support (matplotlib integration)
-- Image generation and embedding
-- Template marketplace
-- PowerPoint theme import/export
-- Presentation analytics and recommendations
-
-## Contributing
-
-Contributions welcome! Areas for improvement:
-
-- Additional slide layouts
-- More color schemes
-- Enhanced content analysis
-- Better error handling
-- Unit tests
-- Documentation improvements
 
 ## Troubleshooting
 
@@ -554,6 +607,7 @@ Contributions welcome! Areas for improvement:
 - Make sure you've exported the environment variable
 - Restart your terminal after setting it
 - Verify your key at https://console.anthropic.com
+- Or run with `--mock` flag to test without an API key
 
 **"ModuleNotFoundError: No module named 'pptx'"**
 ```bash
@@ -570,10 +624,15 @@ pip install anthropic
 pip install pydantic
 ```
 
+**"ModuleNotFoundError: No module named 'PIL'"**
+```bash
+pip install pillow
+```
+
 **Presentation not generating / API errors**
 - Check your API key has credits at console.anthropic.com
 - Ensure you have internet connectivity
-- Try a simpler example first (`examples/basic_example.py`)
+- Try mock mode first: `python main_retail_transformation_llapi.py --mock`
 
 ---
 
